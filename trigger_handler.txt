@@ -1,0 +1,7 @@
+// Trigger Handler
+response = Map();
+// Set the initial greeting message and options when the bot is triggered
+response.put("action","reply");
+response.put("replies",List({"Hello there! 😊 Welcome to Healio, your wellness companion. I'm here to assist you with your health journey. Let's get started by knowing your preferences!"}));
+response.put("suggestions",List({"Dietary","Fitness","Boost Me Up","Organic Outlet","Consult an Expert","Nutritional Info","Connect with staff"}));
+return response;
