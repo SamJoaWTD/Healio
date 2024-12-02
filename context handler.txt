@@ -1,0 +1,1140 @@
+response = Map();
+info answers;
+if(context_id.equals("consultopt"))
+{
+	response.put("action","context");
+	response.put("context_id","consultopt");
+	name = answers.get("name").get("text");
+	//get Email from user
+	if(!answers.containsKey("email"))
+	{
+		zoho.salesiq.visitorsession.set("sites769356495",{"name":name});
+		question = {"name":"email","replies":{"Buddy I need your email to send you a verification code !"},"input":{"type":"email","placeholder":"Enter your email","value":"","error":{"Enter a valid email"}}};
+	}
+	else
+	{
+		email = answers.get("email").get("text");
+		//generate Otp, Send Mail, Get Otp from user
+		if(!answers.containsKey("enterotp"))
+		{
+			email_prefix = email.toList("@").get(0);
+			email_prefix = email_prefix.replaceAll("[^A-Za-z]","");
+			email_prefix = email_prefix.toLowerCase();
+			alphabet_indexes = "_abcdefghijklmnopqrstuvxywz";
+			random_int1 = 7 + alphabet_indexes.indexOf(email_prefix.subText(0,1));
+			random_int2 = 8 + alphabet_indexes.indexOf(email_prefix.subText(1,2));
+			random_long1 = zoho.currenttime.toLong();
+			random_long2 = random_long1 % random_int1;
+			random_long3 = random_long1 % random_int2;
+			random = random_long1.toString();
+			random = random.replaceAll("0","");
+			random = random + "" + random_long2 + "" + random_long3;
+			length = random.length();
+			i = {length - 2,length - 4,length - 1,length - 5,length - 6,length - 3};
+			otp = "" + random.subText(i.get(0) - 1,i.get(0)) + random.subText(i.get(1) - 1,i.get(1)) + random.subText(i.get(2) - 1,i.get(2)) + random.subText(i.get(3) - 1,i.get(3));
+			otp = otp.replaceAll("[^\d]","");
+			otp = otp;
+			info "Generated OTP: " + otp;
+			// Calculate expiry timestamp (10 minutes from now)
+			expiryTime = zoho.currentdate.addMinutes(10).toString("yyyy-MM-dd'T'HH:mm:ss");
+			// Prepare data to insert into the OTPdatabase
+			params = {"majorDimension":"ROWS","values":{{email,otp,expiryTime}}};
+			// Append the new OTP data to the OTPdatabase sheet
+			apiresponse = invokeurl
+			[
+				url :"https://sheets.googleapis.com/v4/spreadsheets/1f9fnOO-dBb4DLiNWdDo48ReVXnyd7-iHblgnVkplv_g/values/OTPdatabase!A2:C2:append?valueInputOption=USER_ENTERED"
+				type :POST
+				parameters:params.toString()
+				headers:{'Content-Type':'application/json'}
+				connection:"googlesheetsintegration1"
+			];
+			// Log the response to check if the data is inserted correctly
+			info "Insert OTP Data Response: " + apiresponse;
+			info "Email to send confirmation: " + email;
+			//verifiedmail=;
+			sendmail
+			[
+				from :zoho.adminuserid
+				to :email
+				subject :"Otp for Healio : " + zoho.currenttime
+				message :"<div style='margin-left: 20%;'><p style='font-size:medium;'>Hi " + name + ",</p><p>Please use the OTP below to verify your email to proceed with Healio appointment booking.</p><h1 style='color: rgb(32, 93, 206); font-weight: bold;'>" + otp + "</h1><p>Please don't share your OTP with anyone.</p><p>Regards,</p><p>Team Healio</p><img src='https://img.freepik.com/free-vector/ai-technology-robot-cyborg-illustrations_24640-134419.jpg?semt=ais_hybrid' alt='Healio logo' width='50' height='50'></div>"
+			]
+			//checking otp
+			question = {"name":"enterotp","replies":{"Could you check your inbox for an otp 📬"},"input":{"type":"name","placeholder":"Enter your OTP here","value":"","error":{""}}};
+		}
+		//response.put("questions",{question});
+		else
+		{
+			// Get user-entered OTP and retrieve stored OTP for verification
+			enteredotp = answers.get("enterotp").get("text");
+			//search user mail is already existing in db
+			emailList1 = {};
+			apiresponse = invokeurl
+			[
+				url :"https://sheets.googleapis.com/v4/spreadsheets/1f9fnOO-dBb4DLiNWdDo48ReVXnyd7-iHblgnVkplv_g/values/HealioDB!A2:H20?majorDimension=ROWS"
+				type :GET
+				connection:"googlesheetsintegration1"
+			];
+			info apiresponse;
+			recordList = apiresponse.get("values");
+			emptycount = 0;
+			//Loop through db and Add all mails in emailList1={}
+			for each  rows in recordList
+			{
+				info rows;
+				if(!rows.isEmpty())
+				{
+					menuOption = rows.get("0");
+					info menuOption;
+					emailList1.insert(menuOption);
+				}
+				else
+				{
+					emptycount = emptycount + 1;
+				}
+			}
+			flag = "0";
+			count = 1;
+			//Search for user entered mail in emailList1
+			for each  mail in emailList1
+			{
+				count = count + 1;
+				if(mail.equalsIgnoreCase(email))
+				{
+					flag = "1";
+					info "flag vlue initial" + flag;
+					rownum = count + emptycount;
+				}
+			}
+			zoho.salesiq.visitorsession.set("sites769356495",{"rownum":rownum});
+			//If mail is not found proceed with booking process
+			if(!flag.equalsIgnoreCase("1"))
+			{
+				info "entered if flag==>" + flag;
+				if(!answers.containsKey("phone"))
+				{
+					// User enters the OTP
+					enteredotp = answers.get("enterotp").get("text");
+					// Retrieve OTP details from Google Sheets
+					apiresponse = invokeurl
+					[
+						url :"https://sheets.googleapis.com/v4/spreadsheets/1f9fnOO-dBb4DLiNWdDo48ReVXnyd7-iHblgnVkplv_g/values/OTPdatabase!A2:C1000?majorDimension=ROWS"
+						type :GET
+						connection:"googlesheetsintegration1"
+					];
+					info "Retrieved OTP Data: " + apiresponse;
+					otpDataList = apiresponse.get("values");
+					// Initialize variables for verification
+					otpFound = false;
+					currentTime = zoho.currentdate.toString("yyyy-MM-dd HH:mm:ss");
+					// Loop through the OTP database to find the matching email and verify OTP
+					for each  row in otpDataList
+					{
+						storedEmail = row.get(0);
+						storedOtp = row.get(1);
+						storedExpiry = row.get(2);
+						// Debugging info
+						info "Stored Email: " + storedEmail;
+						info "Stored OTP: " + storedOtp;
+						info "Stored Expiry (before conversion): " + storedExpiry;
+						// Convert storedExpiry (string) to a date object using the correct format
+						storedExpiry = storedExpiry.toDate("yyyy-MM-dd HH:mm:ss");
+						// Debugging info after conversion
+						info "Stored Expiry (after conversion): " + storedExpiry;
+						info "Current Time: " + currentTime;
+						// Convert currentTime (string) to a date object
+						currentTimeDate = currentTime.toDate("yyyy-MM-dd HH:mm:ss");
+						// Verify if OTP is correct and not expired
+						if(storedOtp == enteredotp && currentTimeDate <= storedExpiry)
+						{
+							otpFound = true;
+							break;
+						}
+					}
+					//Verify Otp & if succeeds
+					// Verify OTP & proceed if successful
+					// Verify OTP & proceed if successful
+					if(otpFound)
+					{
+						response.put("action","context");
+						response.put("context_id","confirmEmail");
+						question = {"name":"emailConfirmation","replies":{"Your email has been successfully verified! You will receive a confirmation email shortly."},"skippable":"true"};
+						// Send confirmation email
+						sendmail
+						[
+							from :zoho.adminuserid
+							to :email
+							subject :"Appointment Confirmed"
+							message :"<h1>Appointment Confirmation</h1><p>Your appointment has been successfully booked. You will receive further details soon. Thank you for using our service!</p>"
+						]
+						if(name != null && email != null)
+						{
+							params = {"majorDimension":"ROWS","values":{{name,email,zoho.currenttime.toString("yyyy-MM-dd'T'HH:mm:ss")}}};
+							// Append the new data to the HealioDB sheet
+							apiresponse = invokeurl
+							[
+								url :"https://sheets.googleapis.com/v4/spreadsheets/1f9fnOO-dBb4DLiNWdDo48ReVXnyd7-iHblgnVkplv_g/values/HealioDB!A2:C2:append?valueInputOption=USER_ENTERED"
+								type :POST
+								parameters:params.toString()
+								headers:{'Content-Type':'application/json'}
+								connection:"googlesheetsintegration1"
+							];
+						}
+					}
+					else
+					{
+						response.put("action","context");
+						response.put("context_id","exit");
+						question = {"name":"done","replies":{"Incorrect OTP. Please try again."},"suggestions":{"Main Menu","No Thanks"}};
+						response.put("questions",{question});
+					}
+				}
+			}
+		}
+	}
+	response.put("questions",{question});
+}
+//Help Desk
+if(context_id.equals("help"))
+{
+	ans = answers.get("helpSugg").get("text");
+	if(ans.containsIgnoreCase("Yes, connect me with a staff member"))
+	{
+		response.put("action","reply");
+		response.put("replies",{"Kindly, use the ''connect with a human'' option below !!"});
+		return response;
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+//Depressed or Boost me up Options
+if(context_id.equals("depressedopt"))
+{
+	opt = answers.get("depressedOpt").get("text");
+	if(opt.containsIgnoreCase("Grab me some Books") || opt.containsIgnoreCase("retry") || opt.containsIgnoreCase("search more"))
+	{
+		response.put("action","context");
+		response.put("context_id","gbooks");
+		question = {"name":"gbook","replies":{"Will you tell me on which Genre should I suggest you the books"},"input":{"type":"name","placeholder":"Eg. romcom,novel,horror...","value":"","error":{"Enter a valid genre"}}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("Skim & Scan"))
+	{
+		response.put("action","context");
+		response.put("context_id","depressedopt");
+		question = {"name":"depressedOpt","replies":{"Hurray...!!","I searched throughout the web and found some best motivational books for you",{"type":"links","text":"The Secret by Rhonda Byrne[English].","image":"https://images-eu.ssl-images-amazon.com/images/I/61mEFHtyGVL._SX198_BO1,204,203,200_QL40_FMwebp_.jpg","image_position":"fit","links":{{"url":"https://drive.google.com/file/d/1CN-ufL6gmIIga7VLE19GlggFhSFsG_jB/view?usp=sharing","text":"Read Now","icon":"https://cdn-icons-png.flaticon.com/512/10/10919.png"},{"url":"https://amzn.to/3GUxidm","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"100 ways to motivate yourself [English].","image":"https://images-eu.ssl-images-amazon.com/images/I/51CSVRgWJoL._SY264_BO1,204,203,200_QL40_FMwebp_.jpg","image_position":"fit","links":{{"url":"https://drive.google.com/file/d/1G1rHzzyNO4tToUlMTdDj4BZXd_Lb0aeT/view?usp=sharing","text":"Read Now","icon":"https://cdn-icons-png.flaticon.com/512/10/10919.png"},{"url":"https://amzn.to/33RgZPG","text":"Buy Now ","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("Play a song"))
+	{
+		// Updated song links with emojis and no suggestions
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Just calm down and listen to these✨🎼",{"type":"video","text":"🎵 Ed Sheeran - Perfect ✨","url":"https://youtu.be/2Vv-BfVoq4g?si=iN1V6hqJyH2XWZ8a"},{"type":"video","text":"🎶 Ellie Goulding - Love Me Like You Do 💖","url":"https://youtu.be/AJtDXIazrMo?si=R3_RZq63dUxqnZ9D"},{"type":"video","text":"🎤 Billie Eilish - BIRDS OF A FEATHER 🕊️","url":"https://youtu.be/WKZO-CWeOVA?si=xn9xbAC7_dfDuH-1"}}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("Motivate me"))
+	{
+		response.put("action","context");
+		response.put("context_id","quotegenerator");
+		question = {"name":"quoteselect","replies":{"Here's a quote that might help you🤗 "},"suggestions":{"Go Ahead"}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("Make me laugh"))
+	{
+		response.put("action","context");
+		response.put("context_id","jokegenerator");
+		question = {"name":"jokeselect","replies":{"Okiee, Now I'm gonna show my humorous side😁"},"suggestions":{"Go ahead"}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("Main Menu"))
+	{
+		response.put("action","context");
+		response.put("context_id","mainmenu");
+		question = {"name":"select","replies":{"Hii buddy🙋‍♀️ Welcome to our site and I'm your Healio😎 To begin with let me know your preference !!"},"suggestions":{"Dietary","Fitness","Boost Me Up","Organic Outlet","Consult an Expert","Help Desk"}};
+		response.put("questions",{question});
+		//selected=answers.get("select").get("text");
+	}
+	else if(opt.containsIgnoreCase("No Thanks"))
+	{
+		response.put("action","context");
+		response.put("context_id","nothanks");
+		question = {"name":"select","replies":{"Will you rate me out of 5 👉👈"},"input":{"type":"star-rating","level":"5"}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+//Get Books from Google Books Api
+if(context_id.equals("gbooks"))
+{
+	genre = answers.get("gbook").get("text");
+	genre = genre.getAlpha();
+	info genre;
+	//Numeric character exception 
+	if(genre.equals(""))
+	{
+		info "entered alpha error";
+		info "isempty";
+		response.put("action","context");
+		response.put("context_id","depressedopt");
+		question1 = {"name":"depressedOpt","replies":{"Oops !, It seems Non-Alphabetic charcter is entered, Kindly make sure you enter only alphabets😕."},"suggestions":{"Retry","No Thanks"}};
+		response.put("questions",{question1});
+		return response;
+	}
+	//call Google Books Api
+	apiresponse = invokeurl
+	[
+		url :"https://www.googleapis.com/books/v1/volumes?q=" + genre
+		type :GET
+		connection:"google_books_api_connector"
+	];
+	count = apiresponse.getJson("totalItems");
+	//No results or no records found exception
+	if(count.equals(0) || count.equals(1) || count.equals(2) || count.equals(3) || count.equals(4))
+	{
+		info "if";
+		response.put("action","context");
+		response.put("context_id","depressedopt");
+		question1 = {"name":"depressedOpt","replies":{"Oops !, It seems no result found from Google Books, Kindly make sure the spelling is correct😕."},"suggestions":{"Retry","No Thanks"}};
+	}
+	else
+	{
+		result_json = apiresponse.getJson("items");
+		info apiresponse.getJson("totalItems");
+		//result1 = apiresponse.getJson("items").;
+		imagelist = List();
+		titlelist = List();
+		authorlist = List();
+		//try catch to handle exception in Google Books Api
+		try 
+		{
+			for each  employee in result_json
+			{
+				cuurent1 = employee.getJSON("volumeInfo").get("title");
+				cuurent2 = employee.getJSON("volumeInfo").getJSON("authors");
+				if(!isNull(cuurent1) && !isNull(cuurent2))
+				{
+					imagelist.add(employee.getJSON("volumeInfo").getJSON("imageLinks").get("thumbnail"));
+					titlelist.add(employee.getJSON("volumeInfo").get("title"));
+					authorlist.add(employee.getJSON("volumeInfo").getJSON("authors"));
+				}
+			}
+		}
+		catch (e)
+		{
+			info "handlingerror";
+			response.put("action","context");
+			response.put("context_id","depressedopt");
+			question1 = {"name":"depressedOpt","replies":{"Unfortunately no results found😕, Please try with other keywords"},"suggestions":{"Retry","No Thanks"}};
+			response.put("questions",{question1});
+			return response;
+		}
+		//display fetched books in Multiple Product display card 
+		response.put("action","context");
+		response.put("context_id","depressedopt");
+		question1 = {"name":"depressedOpt","replies":{{"type":"multiple-product","text":"You can get these books on Google Play Store","elements":{{"title":titlelist.get(0),"subtitle":"~" + authorlist.get(0),"id":"ID of the product","image":imagelist.get(0)},{"title":titlelist.get(1),"subtitle":"~" + authorlist.get(1),"id":"ID of the product","image":imagelist.get(1)},{"title":titlelist.get(2),"subtitle":"~" + authorlist.get(2),"id":"ID of the product","image":imagelist.get(2)},{"title":titlelist.get(3),"subtitle":"~" + authorlist.get(3),"id":"ID of the product","image":imagelist.get(3)},{"title":titlelist.get(4),"subtitle":"~" + authorlist.get(4),"id":"ID of the product","image":imagelist.get(4)}}}},"suggestions":{"Search More","Skim & Scan","Main Menu","No Thanks"}};
+	}
+	response.put("questions",{question1});
+}
+// Generate Quotes from ZenQuotes API
+if(context_id.equals("quotegenerator"))
+{
+	opt = answers.get("quoteselect").get("text");
+	// If user chooses "No Thanks", handle rating
+	if(opt.containsIgnoreCase("no thanks"))
+	{
+		response.put("action","context");
+		response.put("context_id","nothanks");
+		// Prompt the user to rate the bot out of 5 stars
+		question = Map();
+		question.put("name","rate");
+		question.put("replies",List({"Will you rate me out of 5 👉👈"}));
+		question.put("input",Map({"type":"star-rating","level":"5"}));
+		response.put("questions",List({question}));
+	}
+	// If user asks for another quote ("One more" or "Go ahead")
+	else if(opt.containsIgnoreCase("one more") || opt.containsIgnoreCase("go ahead"))
+	{
+		response.put("action","context");
+		response.put("context_id","quotegenerator");
+		// Call ZenQuotes API to get a random quote
+		apiresponse = invokeurl
+		[
+			url :"https://zenquotes.io/api/random"
+			type :GET
+			connection:"zenquotes_api_conn"
+		];
+		info apiresponse;
+		quotelist = List();
+		authorlist = List();
+		result_json = apiresponse.toJSONList();
+		// Store quote and author
+		for each  todo in result_json
+		{
+			quotelist.add(todo.get("q"));
+			// Quote text
+			authorlist.add(todo.get("a"));
+			// Author's name
+		}
+		// Display the fetched quote to the user
+		question = Map();
+		question.put("name","quoteselect");
+		question.put("replies",List({" " + quotelist.get(0) + " ~ " + authorlist.get(0)}));
+		question.put("suggestions",List({"One more","No Thanks"}));
+		response.put("questions",List({question}));
+	}
+	else
+	{
+		// If user input does not match any expected options
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = Map();
+		question.put("name","done");
+		question.put("replies",List({"Oops, I'm confused! Should I connect you with one of our staff members?"}));
+		question.put("suggestions",List({"No thanks","Connect with a staff"}));
+		response.put("questions",List({question}));
+	}
+}
+// Generate Jokes from Joke Generator API
+if(context_id.equals("jokegenerator"))
+{
+	opt = answers.get("jokeselect").get("text");
+	if(opt.containsIgnoreCase("no thanks"))
+	{
+		response.put("action","context");
+		response.put("context_id","nothanks");
+		// Prompt the user to rate the bot out of 5 stars
+		question = Map();
+		question.put("name","rate");
+		question.put("replies",List({"Will you rate me out of 5 👉👈"}));
+		question.put("input",Map({"type":"star-rating","level":"5"}));
+		response.put("questions",List({question}));
+	}
+	else if(opt.containsIgnoreCase("one more") || opt.containsIgnoreCase("go ahead"))
+	{
+		response.put("action","context");
+		response.put("context_id","jokegenerator");
+		// Call Joke Generator API to get a random joke
+		apiresponse = invokeurl
+		[
+			url :"https://v2.jokeapi.dev/joke/Any?blacklistFlags=nsfw,religious,political,racist,sexist,explicit&type=single"
+			type :GET
+			connection:"jokegenerator"
+		];
+		info apiresponse;
+		jokelist = List();
+		result_json = apiresponse.toJSONList();
+		// Iterate through the API response and collect the joke
+		for each  todo in result_json
+		{
+			info todo.get("text");
+			jokelist.add(todo.get("joke"));
+		}
+		// Display the fetched joke to the user
+		question = Map();
+		question.put("name","jokeselect");
+		question.put("replies",List({" " + jokelist.get(0) + " 😂"}));
+		question.put("suggestions",List({"One more","No Thanks"}));
+		response.put("questions",List({question}));
+	}
+	else
+	{
+		// If user input does not match any expected options
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = Map();
+		question.put("name","done");
+		question.put("replies",List({"Oops, I'm confused! Should I connect you with one of our staff members?"}));
+		question.put("suggestions",List({"No thanks","Connect with a staff"}));
+		response.put("questions",List({question}));
+	}
+}
+//Fitness
+if(context_id.equals("fitnessopt"))
+{
+	opt = answers.get("getFitnessOpt").get("text");
+	if(opt.containsIgnoreCase("yoga"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		zoho.salesiq.visitorsession.set("sites769356495",{"speciality":"Yoga"});
+		zoho.salesiq.visitorsession.set("sites769356495",{"expertname":"Ms.Indra V"});
+		question = {"name":"done","replies":{{"type":"video","text":"Here is a video for newbies","url":"https://youtu.be/VaoV1PrYft4"},"But, we would strongly recommend you to consult a yoga master for proper guidance"},"suggestions":{"Consult a yoga master","Yoga Books","Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("Exercise"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		zoho.salesiq.visitorsession.set("sites769356495",{"speciality":"Exercise"});
+		zoho.salesiq.visitorsession.set("sites769356495",{"expertname":"Mr.Saravanan D"});
+		question = {"name":"done","replies":{{"type":"video","text":"Here is a video for newbies","url":"https://youtu.be/kbxW5x_BIpM"},"But, we would strongly recommend you to meet a gymcoach for proper training"},"suggestions":{"Turn to a gym coach","Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+if(context_id.equals("dietaryopt"))
+{
+	ans = answers.get("customizeOrNot").get("text");
+	if(ans.containsIgnoreCase("lets proceed"))
+	{
+		response.put("action","context");
+		response.put("context_id","pickage");
+		question = {"name":"disorder","replies":{"Let me know what bothers you ?"},"input":{"type":"multiple-select","options":{"Diabetes","Obesity","Heart Problems"},"max_selection":"2"}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+//dietary --> All disorders 
+if(context_id.equals("pickage"))
+{
+	ans = answers.get("disorder").get("text");
+	if(ans.containsIgnoreCase("Diabetes") && ans.containsIgnoreCase("Obesity"))
+	{
+		response.put("action","context");
+		response.put("context_id","diabetesobesityopt");
+		questions = {"name":"select5","replies":{{"text":"I'll try to heal your problem, How would you wish to proceed ?"}},"suggestions":{"Watch some helpful videos","Get an exercise plan","Make an appointment"}};
+		response.put("questions",{questions});
+	}
+	else if(ans.containsIgnoreCase("Diabetes") && ans.containsIgnoreCase("Heart Problems"))
+	{
+		response.put("action","context");
+		response.put("context_id","diabetesheartopt");
+		questions = {"name":"select6","replies":{{"text":"I'll try to heal your problem, How would you wish to proceed ?"}},"suggestions":{"Watch some helpful videos","Get an exercise plan","Make an appointment"}};
+		response.put("questions",{questions});
+	}
+	else if(ans.containsIgnoreCase("Obesity") && ans.containsIgnoreCase("Heart Problems"))
+	{
+		response.put("action","context");
+		response.put("context_id","Obesityheartopt");
+		questions = {"name":"select7","replies":{{"text":"I'll try to heal your problem, How would you wish to proceed ?"}},"suggestions":{"Watch some helpful videos","Get an exercise plan","Make an appointment"}};
+		response.put("questions",{questions});
+	}
+	else if(ans.containsIgnoreCase("Diabetes"))
+	{
+		response.put("action","context");
+		response.put("context_id","diabetesopt");
+		questions = {"name":"select1","replies":{{"text":"I'll try to heal your problem, How would you wish to proceed ?"}},"suggestions":{"Watch some helpful videos","Get an exercise plan","Make an appointment"}};
+		response.put("questions",{questions});
+	}
+	else if(ans.containsIgnoreCase("Obesity"))
+	{
+		response.put("action","context");
+		response.put("context_id","obesityopt");
+		questions = {"name":"select2","replies":{{"text":"I'll try to heal your problem, How would you wish to proceed ?"}},"suggestions":{"Watch some helpful videos","Get an exercise plan","Make an appointment"}};
+		response.put("questions",{questions});
+	}
+	else if(ans.containsIgnoreCase("Heart Problems"))
+	{
+		response.put("action","context");
+		response.put("context_id","heartproblemopt");
+		questions = {"name":"select3","replies":{{"text":"I'll try to heal your problem, How would you wish to proceed ?"}},"suggestions":{"Watch some helpful videos","Get an exercise plan","Make an appointment"}};
+		response.put("questions",{questions});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+//Diabeted remedies & Appointment
+if(context_id.equals("diabetesopt"))
+{
+	ans = answers.get("select1").get("text");
+	if(ans.containsIgnoreCase("Watch some helpful videos"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"5 Best Foods for Diabetes Control","url":"https://youtu.be/SdxnHXDBOV4?si=eqEs8FATGEqAsucR"},{"type":"video","text":"Expert tips on what foods to include in your diet for diabetes management","url":"https://youtu.be/172QbZr5fMk?si=vDoOQDYNX-F6mVa5"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+//Heart Problem remedies & Appointment
+if(context_id.equals("heartproblemopt"))
+{
+	ans = answers.get("select3").get("text");
+	if(ans.containsIgnoreCase("Watch some helpful videos"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"Best Food for Heart Patients in Tamil","url":"https://www.youtube.com/watch?v=hzKyXk6BaP8"},{"type":"video","text":"Most Effective Pranayama for Better Heart Health","url":"https://www.youtube.com/watch?v=XWLjcwiayrE"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Get an exercise plan"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"Mini CARDIAC REHAB Home Exercise Programme","url":"https://www.youtube.com/watch?v=V1A9wv_Hw7Y"},{"type":"video","text":"Yoga for HEART HEALTH and Healing","url":"https://www.youtube.com/watch?v=q5vfIqveOQU"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Make an Appointment"))
+	{
+		response.put("action","context");
+		response.put("context_id","consultopt");
+		question = {"name":"name","replies":{"To make an appointment, Let me collect some details !","For your kind information the collected data will be added to our Database for further access.","Initially, May I know your name?"},"input":{"type":"name","placeholder":"Enter your name","value":"","error":{"Enter a valid name"}}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+//Diabeted & Obesity remedies & Appointment
+if(context_id.equals("diabetesobesityopt"))
+{
+	ans = answers.get("select5").get("text");
+	if(ans.containsIgnoreCase("Watch some helpful videos"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"5 Best Foods for Diabetes Control","url":"https://youtu.be/SdxnHXDBOV4?si=eqEs8FATGEqAsucR"},{"type":"video","text":"Expert tips on what foods to include in your diet for diabetes management","url":"https://youtu.be/172QbZr5fMk?si=vDoOQDYNX-F6mVa5"},{"type":"video","text":"10 BEST Go-To Healthy Foods for Losing Weight","url":"https://www.youtube.com/watch?v=PDIBIz1XeQw"},{"type":"video","text":"Full Body Weight Loss Exercise","url":"https://www.youtube.com/watch?app=desktop&v=YPrfcHKC1tc"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Get an exercise plan"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"Best Diabetes Exercises at Home Workout: 10 Minute Beginner Routine","url":"https://www.youtube.com/watch?app=desktop&v=8XZkOkjbmSI&pp=ygUII2RpYmF0aXM%3D"},{"type":"video","text":"10 Light Exercises to Lower Blood Sugar Levels | GlucoseZone","url":"https://www.youtube.com/watch?v=MYjSMqqzc6k"},{"type":"video","text":"Relax and manage diabetes with yoga.","url":"https://www.youtube.com/watch?v=fmh58tykgpo"},{"type":"video","text":"20-Minute Dumbbell FULL BODY STRENGTH Workout for Diabetes","url":"https://www.youtube.com/watch?v=_ylsRViJ3XY"},{"type":"video","text":"20 min Fat Burning Workout for TOTAL BEGINNER","url":"https://www.youtube.com/watch?v=IT94xC35u6k"},{"type":"video","text":"20 Minute Yoga for WEIGHT LOSS 🔥 Fat Burning Yoga Workout","url":"https://www.youtube.com/watch?app=desktop&v=B_rXP_bL9jM&pp=ygUII2FzYW5hZ2k%3D"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Make an Appointment"))
+	{
+		response.put("action","context");
+		response.put("context_id","consultopt");
+		question = {"name":"name","replies":{"To make an appointment, Let me collect some details !","For your kind information the collected data will be added to our Database for further access.","Initially, May I know your name?"},"input":{"type":"name","placeholder":"Enter your name","value":"","error":{"Enter a valid name"}}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+// Handle Explore another category or Start Over
+if(context_id.equals("exit"))
+{
+	opt = answers.get("done").get("text");
+	if(opt.containsIgnoreCase("Explore another category"))
+	{
+		// Redirect to Organic Outlet or any other starting point to explore categories again
+		response.put("action","context");
+		response.put("context_id","organicopt");
+		// Change to whichever context is appropriate to show categories
+		question = {"name":"buy","replies":{{"text":"I can definitely help you with that. Let me know your preference!"}},"suggestions":{"Breakfast Products","Groceries","Snacks and sweets","Show all categories"}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("Start Over"))
+	{
+		// Reset the conversation and start fresh
+		response.put("action","reply");
+		response.put("replies",{{"text":"Let's start fresh! How can I assist you today?"}});
+		response.put("suggestions",{"Dietary","Fitness","Boost Me Up","Organic Outlet","Consult an Expert","Help Desk","Health Assessment"});
+	}
+	else
+	{
+		// Default case if the user provides an invalid input
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"text":"Thank you for visiting! If you need any further assistance, feel free to ask."}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+}
+//Obesity remedies & Appointment
+else if(context_id.equals("obesityopt"))
+{
+	ans = answers.get("select2").get("text");
+	if(ans.containsIgnoreCase("Watch some helpful videos"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"10 BEST Go-To Healthy Foods for Losing Weight","url":"https://www.youtube.com/watch?v=PDIBIz1XeQw"},{"type":"video","text":"Full Body Weight Loss Exercise","url":"https://www.youtube.com/watch?app=desktop&v=YPrfcHKC1tc"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Get an exercise plan"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"20 min Fat Burning Workout for TOTAL BEGINNER","url":"https://www.youtube.com/watch?v=IT94xC35u6k"},{"type":"video","text":"20 Minute Yoga for WEIGHT LOSS 🔥 Fat Burning Yoga Workout","url":"https://www.youtube.com/watch?app=desktop&v=B_rXP_bL9jM&pp=ygUII2FzYW5hZ2k%3D"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Make an Appointment"))
+	{
+		response.put("action","context");
+		response.put("context_id","consultopt");
+		question = {"name":"name","replies":{"To make an appointment, Let me collect some details !","For your kind information the collected data will be added to our Database for further access.","Initially, May I know your name?"},"input":{"type":"name","placeholder":"Enter your name","value":"","error":{"Enter a valid name"}}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+//Heart Problem remedies & Appointment
+else if(context_id.equals("heartproblemopt"))
+{
+	ans = answers.get("select3").get("text");
+	if(ans.containsIgnoreCase("Watch some helpful videos"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"Best Food for Heart Patients in Tamil","url":"https://www.youtube.com/watch?v=hzKyXk6BaP8"},{"type":"video","text":"Most Effective Pranayama for Better Heart Health","url":"https://www.youtube.com/watch?v=XWLjcwiayrE"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Get an exercise plan"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"Mini CARDIAC REHAB Home Exercise Programme","url":"https://www.youtube.com/watch?v=V1A9wv_Hw7Y"},{"type":"video","text":"Yoga for HEART HEALTH and Healing","url":"https://www.youtube.com/watch?v=q5vfIqveOQU"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Make an Appointment"))
+	{
+		response.put("action","context");
+		response.put("context_id","consultopt");
+		question = {"name":"name","replies":{"To make an appointment, Let me collect some details !","For your kind information the collected data will be added to our Database for further access.","Initially, May I know your name?"},"input":{"type":"name","placeholder":"Enter your name","value":"","error":{"Enter a valid name"}}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+//Diabeted & Obesity remedies & Appointment
+else if(context_id.equals("diabetesobesityopt"))
+{
+	ans = answers.get("select5").get("text");
+	if(ans.containsIgnoreCase("Watch some helpful videos"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"5 Best Foods for Diabetes Control","url":"https://youtu.be/SdxnHXDBOV4?si=eqEs8FATGEqAsucR"},{"type":"video","text":"Expert tips on what foods to include in your diet for diabetes management","url":"https://youtu.be/172QbZr5fMk?si=vDoOQDYNX-F6mVa5"},{"type":"video","text":"10 BEST Go-To Healthy Foods for Losing Weight","url":"https://www.youtube.com/watch?v=PDIBIz1XeQw"},{"type":"video","text":"Full Body Weight Loss Exercise","url":"https://www.youtube.com/watch?app=desktop&v=YPrfcHKC1tc"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Get an exercise plan"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"Best Diabetes Exercises at Home Workout: 10 Minute Beginner Routine","url":"https://www.youtube.com/watch?app=desktop&v=8XZkOkjbmSI&pp=ygUII2RpYmF0aXM%3D"},{"type":"video","text":"10 Light Exercises to Lower Blood Sugar Levels | GlucoseZone","url":"https://www.youtube.com/watch?v=MYjSMqqzc6k"},{"type":"video","text":"Relax and manage diabetes with yoga.","url":"https://www.youtube.com/watch?v=fmh58tykgpo"},{"type":"video","text":"20-Minute Dumbbell FULL BODY STRENGTH Workout for Diabetes","url":"https://www.youtube.com/watch?v=_ylsRViJ3XY"},{"type":"video","text":"20 min Fat Burning Workout for TOTAL BEGINNER","url":"https://www.youtube.com/watch?v=IT94xC35u6k"},{"type":"video","text":"20 Minute Yoga for WEIGHT LOSS 🔥 Fat Burning Yoga Workout","url":"https://www.youtube.com/watch?app=desktop&v=B_rXP_bL9jM&pp=ygUII2FzYW5hZ2k%3D"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Make an Appointment"))
+	{
+		response.put("action","context");
+		response.put("context_id","consultopt");
+		question = {"name":"name","replies":{"To make an appointment, Let me collect some details !","For your kind information the collected data will be added to our Database for further access.","Initially, May I know your name?"},"input":{"type":"name","placeholder":"Enter your name","value":"","error":{"Enter a valid name"}}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+//Diabeted & Heart Problem remedies & Appointment
+else if(context_id.equals("diabetesheartopt"))
+{
+	ans = answers.get("select6").get("text");
+	if(ans.containsIgnoreCase("Watch some helpful videos"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"5 Best Foods for Diabetes Control","url":"https://youtu.be/SdxnHXDBOV4?si=eqEs8FATGEqAsucR"},{"type":"video","text":"Expert tips on what foods to include in your diet for diabetes management","url":"https://youtu.be/172QbZr5fMk?si=vDoOQDYNX-F6mVa5"},{"type":"video","text":"Best Food for Heart Patients in Tamil","url":"https://www.youtube.com/watch?v=hzKyXk6BaP8"},{"type":"video","text":"Most Effective Pranayama for Better Heart Health","url":"https://www.youtube.com/watch?v=XWLjcwiayrE"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Get an exercise plan"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"Best Diabetes Exercises at Home Workout: 10 Minute Beginner Routine","url":"https://www.youtube.com/watch?app=desktop&v=8XZkOkjbmSI&pp=ygUII2RpYmF0aXM%3D"},{"type":"video","text":"10 Light Exercises to Lower Blood Sugar Levels | GlucoseZone","url":"https://www.youtube.com/watch?v=MYjSMqqzc6k"},{"type":"video","text":"Relax and manage diabetes with yoga.","url":"https://www.youtube.com/watch?v=fmh58tykgpo"},{"type":"video","text":"20-Minute Dumbbell FULL BODY STRENGTH Workout for Diabetes","url":"https://www.youtube.com/watch?v=_ylsRViJ3XY"},{"type":"video","text":"Mini CARDIAC REHAB Home Exercise Programme","url":"https://www.youtube.com/watch?v=V1A9wv_Hw7Y"},{"type":"video","text":"Yoga for HEART HEALTH and Healing","url":"https://www.youtube.com/watch?v=q5vfIqveOQU"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Make an Appointment"))
+	{
+		response.put("action","context");
+		response.put("context_id","consultopt");
+		question = {"name":"name","replies":{"To make an appointment, Let me collect some details !","For your kind information the collected data will be added to our Database for further access.","Initially, May I know your name?"},"input":{"type":"name","placeholder":"Enter your name","value":"","error":{"Enter a valid name"}}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+//Obesity & Heart Problem remedies & Appointment
+else if(context_id.equals("Obesityheartopt"))
+{
+	ans = answers.get("select7").get("text");
+	if(ans.containsIgnoreCase("Watch some helpful videos"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"10 BEST Go-To Healthy Foods for Losing Weight","url":"https://www.youtube.com/watch?v=PDIBIz1XeQw"},{"type":"video","text":"Full Body Weight Loss Exercise","url":"https://www.youtube.com/watch?app=desktop&v=YPrfcHKC1tc"},{"type":"video","text":"Best Food for Heart Patients in Tamil","url":"https://www.youtube.com/watch?v=hzKyXk6BaP8"},{"type":"video","text":"Most Effective Pranayama for Better Heart Health","url":"https://www.youtube.com/watch?v=XWLjcwiayrE"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Get an exercise plan"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"20 min Fat Burning Workout for TOTAL BEGINNER","url":"https://www.youtube.com/watch?v=IT94xC35u6k"},{"type":"video","text":"20 Minute Yoga for WEIGHT LOSS 🔥 Fat Burning Yoga Workout","url":"https://www.youtube.com/watch?app=desktop&v=B_rXP_bL9jM&pp=ygUII2FzYW5hZ2k%3D"},{"type":"video","text":"Mini CARDIAC REHAB Home Exercise Programme","url":"https://www.youtube.com/watch?v=V1A9wv_Hw7Y"},{"type":"video","text":"Yoga for HEART HEALTH and Healing","url":"https://www.youtube.com/watch?v=q5vfIqveOQU"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Make an Appointment"))
+	{
+		response.put("action","context");
+		response.put("context_id","consultopt");
+		question = {"name":"name","replies":{"To make an appointment, Let me collect some details !","For your kind information the collected data will be added to our Database for further access.","Initially, May I know your name?"},"input":{"type":"name","placeholder":"Enter your name","value":"","error":{"Enter a valid name"}}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+//Diabeted & Heart Problem remedies & Appointment
+else if(context_id.equals("diabetesheartopt"))
+{
+	ans = answers.get("select6").get("text");
+	if(ans.containsIgnoreCase("Watch some helpful videos"))
+	{
+		response.put("action","context");
+		question = {"name":"done","replies":{{"type":"video","text":"5 Best Foods for Diabetes Control","url":"https://youtu.be/SdxnHXDBOV4?si=eqEs8FATGEqAsucR"},{"type":"video","text":"Expert tips on what foods to include in your diet for diabetes management","url":"https://youtu.be/172QbZr5fMk?si=vDoOQDYNX-F6mVa5"},{"type":"video","text":"Best Food for Heart Patients in Tamil","url":"https://www.youtube.com/watch?v=hzKyXk6BaP8"},{"type":"video","text":"Most Effective Pranayama for Better Heart Health","url":"https://www.youtube.com/watch?v=XWLjcwiayrE"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Get an exercise plan"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"video","text":"Best Diabetes Exercises at Home Workout: 10 Minute Beginner Routine","url":"https://www.youtube.com/watch?app=desktop&v=8XZkOkjbmSI&pp=ygUII2RpYmF0aXM%3D"},{"type":"video","text":"10 Light Exercises to Lower Blood Sugar Levels | GlucoseZone","url":"https://www.youtube.com/watch?v=MYjSMqqzc6k"},{"type":"video","text":"Relax and manage diabetes with yoga.","url":"https://www.youtube.com/watch?v=fmh58tykgpo"},{"type":"video","text":"20-Minute Dumbbell FULL BODY STRENGTH Workout for Diabetes","url":"https://www.youtube.com/watch?v=_ylsRViJ3XY"},{"type":"video","text":"Mini CARDIAC REHAB Home Exercise Programme","url":"https://www.youtube.com/watch?v=V1A9wv_Hw7Y"},{"type":"video","text":"Yoga for HEART HEALTH and Healing","url":"https://www.youtube.com/watch?v=q5vfIqveOQU"}},"suggestions":{"Main Menu","No Thanks"}};
+		response.put("questions",{question});
+	}
+	else if(ans.containsIgnoreCase("Make an Appointment"))
+	{
+		response.put("action","context");
+		response.put("context_id","consultopt");
+		question = {"name":"name","replies":{"To make an appointment, Let me collect some details !","For your kind information the collected data will be added to our Database for further access.","Initially, May I know your name?"},"input":{"type":"name","placeholder":"Enter your name","value":"","error":{"Enter a valid name"}}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+if(context_id.equals("organicopt"))
+{
+	response.put("action","context");
+	response.put("context_id","categories");
+	question = {"name":"buy","replies":{{"text":"I can definitely help you with that. Let me know your preference!"}},"suggestions":{"Breakfast Products","Groceries","Snacks and sweets","Show all categories"}};
+	response.put("questions",{question});
+}
+// Organic Outlet Price Filter
+if(context_id.equals("categories"))
+{
+	opt = answers.get("buy").get("text");
+	if(opt.containsIgnoreCase("Breakfast Products"))
+	{
+		response.put("action","context");
+		response.put("context_id","Breakfast");
+		question = {"name":"priceRange","replies":{"Choose your price expectation"},"input":{"type":"range-slider","values":{"20","250","500"}}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("Groceries"))
+	{
+		response.put("action","context");
+		response.put("context_id","grocery");
+		question = {"name":"priceRange","replies":{"Choose your price expectation"},"input":{"type":"range-slider","values":{"20","250","500"}}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("Snacks and sweets"))
+	{
+		response.put("action","context");
+		response.put("context_id","snacks");
+		question = {"name":"priceRange","replies":{"Choose your price expectation"},"input":{"type":"range-slider","values":{"20","250","500"}}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("Show all categories"))
+	{
+		response.put("action","context");
+		response.put("context_id","allcategory");
+		question = {"name":"priceRange","replies":{"Would you like to apply a price filter 👇"},"input":{"type":"range-slider","values":{"20","250","500"}}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"text":"Thank you for visiting! If you need any further assistance, feel free to ask."}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+}
+// Organic Outlet --> Breakfast
+if(context_id.equals("Breakfast"))
+{
+	opt = answers.get("priceRange").get("text");
+	if(opt.containsIgnoreCase("20 - 250"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"links","text":"MILLET NOODLES [600g] - ₹150","image":"https://m.media-amazon.com/images/I/71mRRLmWu6L._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Instant-Jowar-Noodles-Millet-Gluten/dp/B0CQXKSG12/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Instant-Jowar-Noodles-Millet-Gluten/dp/B0CQXKSG12/","text":"Buy Now","icon":"https://cdn-icons-png.flaticon.com/512/126/126083.png"}}},{"type":"links","text":"MAPPILLAI SAMBA AVAL [250 GMS] - ₹55","image":"https://m.media-amazon.com/images/I/51wicXXcZDL.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Saara-HERBAL-FRESH-Mappillai-Breakfast/dp/B0D266TMC9/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Saara-HERBAL-FRESH-Mappillai-Breakfast/dp/B0D266TMC9/","text":"Buy Now","icon":"https://cdn-icons-png.flaticon.com/512/126/126083.png"}}},{"type":"links","text":"MILLETS SEVAI/SEMIYA - ₹48","image":"https://m.media-amazon.com/images/I/61a5AbH5dnL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Desi-Nutri-Multi-Millet-Vermicelli/dp/B0BVB3ZH1P/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Desi-Nutri-Multi-Millet-Vermicelli/dp/B0BVB3ZH1P/","text":"Buy Now","icon":"https://cdn-icons-png.flaticon.com/512/126/126083.png"}}},{"type":"links","text":"Show more products","image":"https://bit.ly/3rEoT74","image_position":"fill","links":{{"url":"https://www.amazon.in/s?k=millet+breakfast+products","text":"Explore More on Amazon","icon":"https://cdn-icons-png.flaticon.com/512/833/833314.png"}}}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("250 - 500"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"links","text":"HONEY [500ML] - ₹300","image":"https://m.media-amazon.com/images/I/71j7J4b7y5L._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Organic-Certified-Unprocessed-Unpasteurized-Adulteration/dp/B09BL1CLYF/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Organic-Certified-Unprocessed-Unpasteurized-Adulteration/dp/B09BL1CLYF/","text":"Buy Now","icon":"https://cdn-icons-png.flaticon.com/512/126/126083.png"}}},{"type":"links","text":"PISTA [100 GMS] - ₹275","image":"https://m.media-amazon.com/images/I/61IP08QCWGL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Happilo-Premium-Californian-Roasted-Salted-Pistachios/dp/B01LZ5DFW2/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Happilo-Premium-Californian-Roasted-Salted-Pistachios/dp/B01LZ5DFW2/","text":"Buy Now","icon":"https://cdn-icons-png.flaticon.com/512/126/126083.png"}}},{"type":"links","text":"Show More","image":"https://bit.ly/3rEoT74","image_position":"fill","links":{{"url":"https://www.amazon.in/s?k=organic+products&ref=nb_sb_noss","text":"Explore More on Amazon","icon":"https://cdn-icons-png.flaticon.com/512/833/833314.png"}}}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("20 - 500"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"links","text":"RED AVAL [500gms] - ₹53","image":"https://m.media-amazon.com/images/I/61yj4E+tReL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Tata-Sampann-Thick-Rice-Avalakki/dp/B07KRF9M3D/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Tata-Sampann-Thick-Rice-Avalakki/dp/B07KRF9M3D/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"MILLETS BISCUITS 75 GM - ₹48","image":"https://m.media-amazon.com/images/I/81TkSto+5DL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Sunfeast-Farmlite-Super-Millets-Cookies/dp/B0BTPSPP2K/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Sunfeast-Farmlite-Super-Millets-Cookies/dp/B0BTPSPP2K/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"NUTRITION MIX 100 GMS- ₹110","image":"https://m.media-amazon.com/images/I/61HndGdGk7L._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Nourish-Antioxidant-Sunflower-Cranberries-Gojiberries/dp/B0D4CZ75QX/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Nourish-Antioxidant-Sunflower-Cranberries-Gojiberries/dp/B0D4CZ75QX/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"Show More","image":"https://bit.ly/3rEoT74","image_position":"fill","links":{{"url":"https://www.amazon.in/s?k=organic+products&ref=nb_sb_noss","text":"Explore More on Amazon","icon":"https://cdn-icons-png.flaticon.com/512/833/833314.png"}}}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"text":"Thank you for your time! If you need further help, just let me know."}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+}
+// Organic outlet --> Grocery
+if(context_id.equals("grocery"))
+{
+	opt = answers.get("priceRange").get("text");
+	if(opt.containsIgnoreCase("20 - 250"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"links","text":"TURMERIC [100GMS]- ₹35","image":"https://m.media-amazon.com/images/I/914EIzU2geL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Aashirvaad-Turmeric-Powder-100g/dp/B01COQMD5W/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.vidhaiorganicstore.in/turmeric-100gms","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"},{"url":"https://www.amazon.in/s?k=spices","text":"Show more","icon":"https://bit.ly/3rEoT74"}}},{"type":"links","text":"TULSI GREEN LEMON GINGER 25 BAGG - ₹174","image":"https://m.media-amazon.com/images/I/61lvjBPef8L._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Organic-India-Tulsi-Green-Ginger/dp/B078HQWWVF/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Organic-India-Tulsi-Green-Ginger/dp/B078HQWWVF/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"},{"url":"https://www.amazon.in/s?k=organic+tea+coffee","text":"Show more","icon":"https://bit.ly/3rEoT74"}}}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("250 - 500"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"links","text":"COCONUT OIL 1 LIT- ₹306","image":"https://m.media-amazon.com/images/I/61kGwqHgTtL._SY741_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/KLF-Nirmal-100-Pure-Coconut/dp/B017AD65Z8/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/KLF-Nirmal-100-Pure-Coconut/dp/B017AD65Z8/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"},{"url":"https://www.amazon.in/s?k=cold+pressed+oils","text":"Show more","icon":"https://bit.ly/3rEoT74"}}},{"type":"links","text":"MULTIGRAIN FLOUR [1 KG] - ₹450","image":"https://m.media-amazon.com/images/I/71ABFxGMqKL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/24-Mantra-Organic-Multi-Grain-Flour/dp/B01CSUPK1S/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/24-Mantra-Organic-Multi-Grain-Flour/dp/B01CSUPK1S/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"},{"url":"https://www.amazon.in/s?k=multigrain+flour","text":"Show more","icon":"https://bit.ly/3rEoT74"}}}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("20 - 500"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"links","text":"TURMERIC [100GMS]- ₹35","image":"https://m.media-amazon.com/images/I/914EIzU2geL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Aashirvaad-Turmeric-Powder-100g/dp/B01COQMD5W/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.vidhaiorganicstore.in/turmeric-100gms","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"},{"url":"https://www.amazon.in/s?k=spices","text":"Show more","icon":"https://bit.ly/3rEoT74"}}},{"type":"links","text":"COCONUT OIL 1 LIT- ₹306","image":"https://m.media-amazon.com/images/I/61kGwqHgTtL._SY741_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/KLF-Nirmal-100-Pure-Coconut/dp/B017AD65Z8/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/KLF-Nirmal-100-Pure-Coconut/dp/B017AD65Z8/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"},{"url":"https://www.amazon.in/s?k=cold+pressed+oils","text":"Show more","icon":"https://bit.ly/3rEoT74"}}}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"text":"Thank you for your time! If you need further help, just let me know."}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+}
+//Organic outlet --> 	Snacks
+if(context_id.equals("snacks"))
+{
+	opt = answers.get("priceRange").get("text");
+	if(opt.containsIgnoreCase("20 - 250"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"links","text":"ONION PAPPAD 500 GMS - ₹100","image":"https://m.media-amazon.com/images/I/817asw+CHgL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Perfect-compliment-Appalam-preservatives-Gluten-free/dp/B0DD46CPB1/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Perfect-compliment-Appalam-preservatives-Gluten-free/dp/B0DD46CPB1/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"MIXED MILLET CAKE - ₹199","image":"https://m.media-amazon.com/images/I/71Pfw1DIwZL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Little-Joys-Pancake-Chocolate-Preservatives/dp/B0D967CP2V/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Little-Joys-Pancake-Chocolate-Preservatives/dp/B0D967CP2V/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"NENTHIRAM CHIPS 30 GMS - ₹20","image":"https://m.media-amazon.com/images/I/81vQUQNrP3L._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Beyond-Sn%C3%A1ck-Kerala-Banana-Chips/dp/B09R82ZR1H/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Beyond-Sn%C3%A1ck-Kerala-Banana-Chips/dp/B09R82ZR1H/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"},{"url":"https://www.amazon.in/s?k=organic+sweets+and+snacks","text":"Show more","icon":"https://bit.ly/3rEoT74"}}}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("250 - 500"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"links","text":"PALM CANDY 500 GMS ₹419","image":"https://m.media-amazon.com/images/I/6184xXB8cOL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Indian-Quality-Natural-Traditional-Method/dp/B09BJW99JB/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Indian-Quality-Natural-Traditional-Method/dp/B09BJW99JB/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"KARUPATTI/PANAI VELLAM - 1 Kg ₹450","image":"https://m.media-amazon.com/images/I/71mO5VwP3QL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Divine-Foods-Natural-Unrefined-Karuppatti/dp/B09QM649V8/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Divine-Foods-Natural-Unrefined-Karuppatti/dp/B09QM649V8/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"},{"url":"https://www.amazon.in/s?k=organic+sweetners+and+salts","text":"Show more","icon":"https://bit.ly/3rEoT74"}}}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("20 - 500"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"links","text":"DATES 250 GMS - ₹149","image":"https://m.media-amazon.com/images/I/61v8WrtR4iL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Del-Monte-Royal-Arabian-Dates/dp/B0C1V5WPC9/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Del-Monte-Royal-Arabian-Dates/dp/B0C1V5WPC9/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"NENTHIRAM CHIPS 30 GMS - ₹20","image":"https://m.media-amazon.com/images/I/81vQUQNrP3L._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Beyond-Sn%C3%A1ck-Kerala-Banana-Chips/dp/B09R82ZR1H/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Beyond-Sn%C3%A1ck-Kerala-Banana-Chips/dp/B09R82ZR1H/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"KAMRKATTU 100 GMS - 75","image":"https://m.media-amazon.com/images/I/61EyBPzcxgL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Muralis-Market-Kamarkattu-100gms/dp/B0BGQ5Y67L/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Muralis-Market-Kamarkattu-100gms/dp/B0BGQ5Y67L/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"},{"url":"https://www.amazon.in/s?k=organic+sweets+and+snacks","text":"Show more","icon":"https://bit.ly/3rEoT74"}}}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"text":"Thank you for your time! If you need further help, just let me know."}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+}
+//Organic outlet --> 	Show all Categories
+if(context_id.equals("allcategory"))
+{
+	opt = answers.get("priceRange").get("text");
+	if(opt.containsIgnoreCase("20 - 250"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"links","text":"PANEER [200 GMS] - ₹125","image":"https://m.media-amazon.com/images/I/71mTWHyvF3L._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Milky-Mist-Paneer-Pouch-200g/dp/B019RKYJV4/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Milky-Mist-Paneer-Pouch-200g/dp/B019RKYJV4/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"MIXED MILLET CAKE - ₹99","image":"https://m.media-amazon.com/images/I/71GB5+hdpaL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Gladful-Strawberry-Pancake-Refined-Sprouted/dp/B0DJGZ7B9Y/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Gladful-Strawberry-Pancake-Refined-Sprouted/dp/B0DJGZ7B9Y/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"Rose Water 100ml - ₹80","image":"https://m.media-amazon.com/images/I/61qH6bzKZFL._SX522_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/DABUR-Gulabari-250ml-Clear/dp/B09HV2G4S9/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/DABUR-Gulabari-250ml-Clear/dp/B09HV2G4S9/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"},{"url":"https://www.amazon.in/s?k=organic+cosmetic","text":"Show more","icon":"https://bit.ly/3rEoT74"}}}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("250 - 500"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"links","text":"Organic India Quinoa 500gms - ₹295","image":"https://m.media-amazon.com/images/I/719mdpqHPWL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Nourish-Organic-Indian-Quinoa-Gluten/dp/B09NDCMZ1V/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Nourish-Organic-Indian-Quinoa-Gluten/dp/B09NDCMZ1V/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"MALAI POONDU 500 GMS - ₹400","image":"https://m.media-amazon.com/images/I/41rglqnqqnL.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/BSD-Organics-Garlic-lahasun-Poondu/dp/B08KJJ99TN/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/BSD-Organics-Garlic-lahasun-Poondu/dp/B08KJJ99TN/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"ORU THALA POONDU 500 GMS - ₹430","image":"https://m.media-amazon.com/images/I/31coxnRWqbL.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Parshutara-Sanjaytopcat-Single-Clove-Garlic/dp/B0D8JRQQ8J/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Parshutara-Sanjaytopcat-Single-Clove-Garlic/dp/B0D8JRQQ8J/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"},{"url":"https://www.amazon.in/s?k=herbal+medicine+and+supplements","text":"Show more","icon":"https://bit.ly/3rEoT74"}}}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+	else if(opt.containsIgnoreCase("20 - 500"))
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"type":"links","text":"Health Mix [600 Gm] - ₹315","image":"https://m.media-amazon.com/images/I/71z8S+GvQAL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/Manna-Multigrains-Health-Nutrition-Drink/dp/B07G1M58WJ/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/Manna-Multigrains-Health-Nutrition-Drink/dp/B07G1M58WJ/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"FENUGREEK POWDER/VENDHAYAM 100 GM - ₹40","image":"https://m.media-amazon.com/images/I/71KPk3zl1BL._SX679_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/24-Mantra-Organic-Fenugreek-Powder/dp/B00HPVA2Q4/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/24-Mantra-Organic-Fenugreek-Powder/dp/B00HPVA2Q4/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"}}},{"type":"links","text":"Almond Oil [100ml] - ₹225","image":"https://m.media-amazon.com/images/I/61ddfFXuPZL._SX522_.jpg","image_position":"fill","links":{{"url":"https://www.amazon.in/UrbanBotanics%C2%AE-Pressed-Sweet-Almond-Odorless/dp/B0BJ7153HS/","text":"Add to cart","icon":"https://cdn-icons-png.flaticon.com/512/70/70021.png"},{"url":"https://www.amazon.in/UrbanBotanics%C2%AE-Pressed-Sweet-Almond-Odorless/dp/B0BJ7153HS/","text":"Buy Now","icon":"https://image.flaticon.com/icons/png/512/126/126083.png"},{"url":"https://www.amazon.in/s?k=organic+cosmetic","text":"Show more","icon":"https://bit.ly/3rEoT74"}}}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{{"text":"Thank you for your time! If you need further help, just let me know."}},"suggestions":{"Explore another category","Start Over"}};
+		response.put("questions",{question});
+	}
+}
+//Looping back to main menu
+if(context_id.equals("mainmenu"))
+{
+	ans = answers.get("select").get("text");
+	if(ans.equalsIgnoreCase("Dietary"))
+	{
+		response.put("action","context");
+		response.put("context_id","dietaryopt");
+		question = {"name":"customizeOrNot","replies":{"When diet is wrong, Medicine is of no use.","When diet is correct, Medicine is of no need !!✨"},"suggestions":{"Lets Proceed"}};
+		response.put("questions",{question});
+	}
+	else if(ans.equalsIgnoreCase("Fitness"))
+	{
+		response.put("action","context");
+		response.put("context_id","fitnessopt");
+		question = {"name":"getFitnessOpt","replies":{"Being healthy and fit isn't a fade or a trend. It's a lifestyle 💪🏻"},"suggestions":{"Yoga","Exercise"}};
+		response.put("questions",{question});
+	}
+	else if(ans.equalsIgnoreCase("Consult an expert") || ans.equalsIgnoreCase("Consult a yoga master") || ans.equalsIgnoreCase("Turn to a gym coach"))
+	{
+		response.put("action","context");
+		response.put("context_id","consultopt");
+		question = {"name":"name","replies":{"To make an appointment, Let me collect some details !","For your kind information the collected data will be added to our Database for further access.","Initially, May I know your name?"},"input":{"type":"name","placeholder":"Enter your name","value":"","error":{"Enter a valid name"}}};
+		response.put("questions",{question});
+	}
+	else if(ans.equalsIgnoreCase("Organic Outlet"))
+	{
+		response.put("action","context");
+		response.put("context_id","organicopt");
+		question = {"name":"name","replies":{"Great ! Thats the best choice","Did you Know ? 😮 Organic food is said to be much more nutritious than conventional food !!"},"suggestions":{"Show Categories "}};
+		response.put("questions",{question});
+	}
+	else if(ans.equalsIgnoreCase("Boost Me Up"))
+	{
+		response.put("action","context");
+		response.put("context_id","depressedopt");
+		question = {"name":"depressedOpt","replies":{"Hey there, friend! 😊 Don’t worry, Healio’s here to cheer you up and bring a smile to your day! 🌈💖"},"suggestions":{"Grab me some Books","Motivate me","Make me laugh","Play a song"}};
+		response.put("questions",{question});
+	}
+	else if(ans.equalsIgnoreCase("Help Desk"))
+	{
+		response.put("action","context");
+		response.put("context_id","help");
+		question = {"name":"helpSugg","replies":{"Welcome to Help Desk !, How may I help you ?"},"suggestions":{"Regarding Appointment","Connect with staff"}};
+		response.put("questions",{question});
+	}
+	else if(ans.equalsIgnoreCase("No thanks"))
+	{
+		response.put("action","context");
+		response.put("context_id","nothanks");
+		question = {"name":"select","replies":{"Will you rate me out of 5 👉👈"},"input":{"type":"star-rating","level":"5"}};
+		response.put("questions",{question});
+	}
+	else
+	{
+		response = Map();
+		response.put("action","context");
+		response.put("context_id","exit");
+		question = {"name":"done","replies":{"Oops I'm confused Should I connect u with one of our staffs"},"suggestions":{"Main menu","No thanks","Connect with a staff"}};
+		response.put("questions",{question});
+	}
+}
+//Get rating and ending the chat
+if(context_id.equals("nothanks"))
+{
+	response.put("action","end");
+	response.put("replies",{"It was great chatting with you! 😊 Take care and have an amazing day ahead! 🌟 Bye for now! 👋"});
+}
+return response;
